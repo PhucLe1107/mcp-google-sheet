@@ -494,16 +494,16 @@ def batch_update_cells(spreadsheet_id: str,
 
 @tool(
     annotations=ToolAnnotations(
-        title="Append Row by Columns",
+        title="Add Contact",
         destructiveHint=True,
     ),
 )
-def append_row_by_columns(spreadsheet_id: str,
-                          sheet_gid: str,
-                          row_data: Dict[str, Any],
-                          ctx: Context = None) -> Dict[str, Any]:
+def add_contact(spreadsheet_id: str,
+                sheet_gid: str,
+                row_data: Dict[str, Any],
+                ctx: Context = None) -> Dict[str, Any]:
     """
-    Append a new row to the sheet by mapping column header names to values.
+    Add new customer contact information to the sheet by mapping column header names to their respective values.
     
     Args:
         spreadsheet_id: The ID of the spreadsheet (found in the URL)
