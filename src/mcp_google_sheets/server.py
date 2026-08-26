@@ -220,6 +220,74 @@ def tool(annotations: Optional[ToolAnnotations] = None):
 
 @tool(
     annotations=ToolAnnotations(
+        title="Filter Sheet Data",
+        readOnlyHint=True,
+    ),
+)
+def filter_sheet_data(spreadsheet_id: str,
+                      sheet: str,
+                      filter_column: str,
+                      filter_value: str,
+                      ctx: Context = None) -> Dict[str, Any]:
+    """
+    Fetch data from a Google Sheet and filter rows based on a specific column value.
+    
+    Args:
+        spreadsheet_id: The ID of the spreadsheet (found in the URL)
+        sheet: The name of the sheet
+        filter_column: The name of the column header to filter by (e.g., 'Trạng thái')
+        filter_value: The value to filter for in that column (e.g., 'Hoạt động')
+    
+    Returns:
+        A dictionary containing the filtered rows (including the header row).
+    """
+    sheets_service = ctx.request_context.lifespan_context.sheets_service
+    
+    # Fetch all values from the sheet
+    values_result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=sheet
+    ).execute()
+    
+    values = values_result.get('values', [])
+    if not values:
+        return {'error': 'Sheet is empty', 'filtered_values': []}
+        
+    headers = values[0]
+    
+    # Find the column index (case-insensitive)
+    col_idx = -1
+    target_col = filter_column.strip().lower()
+    for i, h in enumerate(headers):
+        if str(h).strip().lower() == target_col:
+            col_idx = i
+            break
+            
+    if col_idx == -1:
+        return {'error': f"Column '{filter_column}' not found in headers", 'headers': headers}
+        
+    # Filter rows based on the column value (case-insensitive)
+    filtered_rows = [headers]  # Always include the header row
+    target_val = filter_value.strip().lower()
+    
+    for row in values[1:]:
+        # Check if row is long enough to have this column
+        if len(row) > col_idx:
+            cell_val = str(row[col_idx]).strip().lower()
+            if cell_val == target_val:
+                filtered_rows.append(row)
+                
+    return {
+        'spreadsheetId': spreadsheet_id,
+        'sheet': sheet,
+        'filter': f"{filter_column} == {filter_value}",
+        'match_count': len(filtered_rows) - 1,
+        'filtered_values': filtered_rows
+    }
+
+
+@tool(
+    annotations=ToolAnnotations(
         title="Get Sheet Data",
         readOnlyHint=True,
     ),
