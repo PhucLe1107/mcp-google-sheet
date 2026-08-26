@@ -235,8 +235,8 @@ def filter_sheet_data(spreadsheet_id: str,
     Args:
         spreadsheet_id: The ID of the spreadsheet (found in the URL)
         sheet: The name of the sheet
-        filter_column: The name of the column header to filter by (e.g., 'Trạng thái')
-        filter_value: The value to filter for in that column (e.g., 'Hoạt động')
+        filter_column: The name of the column header to filter by (e.g., 'Status')
+        filter_value: The value to filter for in that column (e.g., 'Active')
     
     Returns:
         A dictionary containing the filtered rows (including the header row).
@@ -474,6 +474,76 @@ def batch_update_cells(spreadsheet_id: str,
     ).execute()
     
     return result
+
+
+@tool(
+    annotations=ToolAnnotations(
+        title="Append Row by Columns",
+        destructiveHint=True,
+    ),
+)
+def append_row_by_columns(spreadsheet_id: str,
+                          sheet: str,
+                          row_data: Dict[str, Any],
+                          ctx: Context = None) -> Dict[str, Any]:
+    """
+    Append a new row to the sheet by mapping column header names to values.
+    
+    Args:
+        spreadsheet_id: The ID of the spreadsheet (found in the URL)
+        sheet: The name of the sheet
+        row_data: A dictionary mapping column names to values (e.g., {"id": "1", "name": "John Doe", "phone": "12345"})
+    """
+    sheets_service = ctx.request_context.lifespan_context.sheets_service
+    
+    # Get the list of column names in the first row
+    header_result = sheets_service.spreadsheets().values().get(
+        spreadsheetId=spreadsheet_id,
+        range=f"{sheet}!1:1"
+    ).execute()
+    
+    values_data = header_result.get('values', [])
+    
+    if not values_data or not values_data[0]:
+        # If the sheet is completely blank, automatically use the keys of row_data as headers
+        headers = list(row_data.keys())
+        values_row = [str(row_data[k]) for k in headers]
+        
+        # Append two rows: the header row and the data row
+        body = {'values': [headers, values_row]}
+    else:
+        headers = values_data[0]
+        # Create an empty array with the same size as the headers
+        new_row = [""] * len(headers)
+        
+        # Map the data to the correct column positions
+        for col_name, val in row_data.items():
+            col_idx = -1
+            target = str(col_name).strip().lower()
+            for i, h in enumerate(headers):
+                if str(h).strip().lower() == target:
+                    col_idx = i
+                    break
+                    
+            if col_idx != -1:
+                new_row[col_idx] = str(val)
+                
+        # Append only the new data row
+        body = {'values': [new_row]}
+        
+    result = sheets_service.spreadsheets().values().append(
+        spreadsheetId=spreadsheet_id,
+        range=sheet,
+        valueInputOption='USER_ENTERED',
+        insertDataOption='INSERT_ROWS',
+        body=body
+    ).execute()
+    
+    return {
+        'spreadsheetId': spreadsheet_id,
+        'updates': result.get('updates', {}),
+        'inserted_row': row_data
+    }
 
 
 @tool(
