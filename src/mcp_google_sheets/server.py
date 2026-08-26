@@ -218,6 +218,18 @@ def tool(annotations: Optional[ToolAnnotations] = None):
     return decorator
 
 
+def _get_sheet_name_by_gid(sheets_service, spreadsheet_id: str, sheet_gid: str) -> Optional[str]:
+    """Helper to find sheet name by its GID (sheetId)."""
+    try:
+        metadata = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        for s in metadata.get('sheets', []):
+            if str(s.get('properties', {}).get('sheetId')) == str(sheet_gid):
+                return s.get('properties', {}).get('title')
+    except Exception as e:
+        logger.error("Error getting sheet name for gid %s: %s", sheet_gid, e)
+    return None
+
+
 @tool(
     annotations=ToolAnnotations(
         title="Filter Sheet Data",
@@ -225,7 +237,7 @@ def tool(annotations: Optional[ToolAnnotations] = None):
     ),
 )
 def filter_sheet_data(spreadsheet_id: str,
-                      sheet: str,
+                      sheet_gid: str,
                       filter_column: str,
                       filter_value: str,
                       ctx: Context = None) -> Dict[str, Any]:
@@ -234,7 +246,7 @@ def filter_sheet_data(spreadsheet_id: str,
     
     Args:
         spreadsheet_id: The ID of the spreadsheet (found in the URL)
-        sheet: The name of the sheet
+        sheet_gid: The GID of the sheet (the 'gid=xxx' part of the URL)
         filter_column: The name of the column header to filter by (e.g., 'Status')
         filter_value: The value to filter for in that column (e.g., 'Active')
     
@@ -242,6 +254,10 @@ def filter_sheet_data(spreadsheet_id: str,
         A dictionary containing the filtered rows (including the header row).
     """
     sheets_service = ctx.request_context.lifespan_context.sheets_service
+    
+    sheet = _get_sheet_name_by_gid(sheets_service, spreadsheet_id, sheet_gid)
+    if not sheet:
+        return {'error': f"Sheet with GID {sheet_gid} not found."}
     
     # Fetch all values from the sheet
     values_result = sheets_service.spreadsheets().values().get(
@@ -483,7 +499,7 @@ def batch_update_cells(spreadsheet_id: str,
     ),
 )
 def append_row_by_columns(spreadsheet_id: str,
-                          sheet: str,
+                          sheet_gid: str,
                           row_data: Dict[str, Any],
                           ctx: Context = None) -> Dict[str, Any]:
     """
@@ -491,10 +507,14 @@ def append_row_by_columns(spreadsheet_id: str,
     
     Args:
         spreadsheet_id: The ID of the spreadsheet (found in the URL)
-        sheet: The name of the sheet
+        sheet_gid: The GID of the sheet (the 'gid=xxx' part of the URL)
         row_data: A dictionary mapping column names to values (e.g., {"id": "1", "name": "John Doe", "phone": "12345"})
     """
     sheets_service = ctx.request_context.lifespan_context.sheets_service
+    
+    sheet = _get_sheet_name_by_gid(sheets_service, spreadsheet_id, sheet_gid)
+    if not sheet:
+        return {'error': f"Sheet with GID {sheet_gid} not found."}
     
     # Get the list of column names in the first row
     header_result = sheets_service.spreadsheets().values().get(
