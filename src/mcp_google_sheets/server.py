@@ -29,12 +29,15 @@ import google.auth
 logger = logging.getLogger(__name__)
 
 # Constants
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 CREDENTIALS_CONFIG = os.environ.get('CREDENTIALS_CONFIG')
 TOKEN_PATH = os.environ.get('TOKEN_PATH', 'token.json')
 CREDENTIALS_PATH = os.environ.get('CREDENTIALS_PATH', 'credentials.json')
 SERVICE_ACCOUNT_PATH = os.environ.get('SERVICE_ACCOUNT_PATH', 'service_account.json')
 DRIVE_FOLDER_ID = os.environ.get('DRIVE_FOLDER_ID', '')  # Working directory in Google Drive
+
+if DRIVE_FOLDER_ID:
+    SCOPES.append('https://www.googleapis.com/auth/drive')
 
 
 def _configure_logging() -> None:
@@ -156,7 +159,13 @@ async def spreadsheet_lifespan(server: FastMCP) -> AsyncIterator[SpreadsheetCont
     
     # Build the services
     sheets_service = build('sheets', 'v4', credentials=creds, cache_discovery=False)
-    drive_service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+    
+    drive_service = None
+    if 'https://www.googleapis.com/auth/drive' in SCOPES:
+        try:
+            drive_service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+        except Exception as e:
+            logger.error("Error building Drive service: %s", e)
     
     try:
         # Provide the service in the context
@@ -1057,6 +1066,8 @@ def create_spreadsheet(title: str, folder_id: Optional[str] = None, ctx: Context
         Information about the newly created spreadsheet including its ID
     """
     drive_service = ctx.request_context.lifespan_context.drive_service
+    if not drive_service:
+        raise Exception("Google Drive API is not enabled. Set DRIVE_FOLDER_ID environment variable to enable Drive features.")
     # Use provided folder_id or fall back to configured default
     target_folder_id = folder_id or ctx.request_context.lifespan_context.folder_id
 
@@ -1156,6 +1167,8 @@ def list_spreadsheets(folder_id: Optional[str] = None, ctx: Context = None) -> L
         List of spreadsheets with their ID and title
     """
     drive_service = ctx.request_context.lifespan_context.drive_service
+    if not drive_service:
+        raise Exception("Google Drive API is not enabled. Set DRIVE_FOLDER_ID environment variable to enable Drive features.")
     # Use provided folder_id or fall back to configured default
     target_folder_id = folder_id or ctx.request_context.lifespan_context.folder_id
     
@@ -1211,6 +1224,8 @@ def share_spreadsheet(spreadsheet_id: str,
         Each item in the lists includes the email address and the outcome.
     """
     drive_service = ctx.request_context.lifespan_context.drive_service
+    if not drive_service:
+        raise Exception("Google Drive API is not enabled. Set DRIVE_FOLDER_ID environment variable to enable Drive features.")
     successes = []
     failures = []
     
@@ -1286,6 +1301,8 @@ def list_folders(parent_folder_id: Optional[str] = None, ctx: Context = None) ->
         List of folders with their ID, name, and parent information
     """
     drive_service = ctx.request_context.lifespan_context.drive_service
+    if not drive_service:
+        raise Exception("Google Drive API is not enabled. Set DRIVE_FOLDER_ID environment variable to enable Drive features.")
     
     query = "mimeType='application/vnd.google-apps.folder'"
     
@@ -1343,6 +1360,8 @@ def search_spreadsheets(query: str,
         List of matching spreadsheets with their ID, name, and metadata
     """
     drive_service = ctx.request_context.lifespan_context.drive_service
+    if not drive_service:
+        raise Exception("Google Drive API is not enabled. Set DRIVE_FOLDER_ID environment variable to enable Drive features.")
 
     # Limit max_results to reasonable bounds
     max_results = min(max(1, max_results), 100)
